@@ -44,6 +44,18 @@ Verified: host discovery with an empty environment. Not verified: the portal han
 Please try it and report back; Flatpak Firefox is unsupported.
 Release builds are unsigned: load them via `about:debugging`, or sign them through AMO.
 
+## Screenshots
+
+The popup with three tabs selected and every supported browser found, the confirmation after
+sending them to Vivaldi, and the error shown when the native host is not registered:
+
+| Popup | Sent | Host missing |
+| --- | --- | --- |
+| ![Popup: 3 tabs selected, five browser buttons](docs/screenshots/popup-default.png) | ![Popup: status "Sent 3 tabs to Vivaldi."](docs/screenshots/popup-sent.png) | ![Popup: "Cannot reach the native host … Did you run just install-host?"](docs/screenshots/popup-error.png) |
+
+They are generated from a real headless Firefox run by `just screenshots` and refreshed on
+demand by the `screenshots.yml` workflow.
+
 ## Privacy
 
 Nothing is collected or transmitted; see [PRIVACY.md](PRIVACY.md).
@@ -68,9 +80,11 @@ All lint checks live in [`.pre-commit-config.yaml`](.pre-commit-config.yaml) —
 | `just test-e2e` | headless Firefox + real extension + real host, fake `vivaldi`/`google-chrome` executables (`FIREFOX_BIN` selects Firefox) |
 | `just ci` | all of the above |
 | `just package [version]` | `dist/` zip + host tarball |
+| `just screenshots` | regenerate `docs/screenshots/*.png` (headless Firefox; `FIREFOX_BIN` selects Firefox) |
 
 ## Workflows
 
 * `ci.yml`: `just ci` on pushes to main/master and PRs.
 * `release.yml`: on tags `v*` that are on main/master and match the manifest version: tests, packages, creates a GitHub release.
 * `nightly.yml`: on each push to main/master (plus a daily safety net) publishes the rolling `nightly` pre-release if main has moved since the last one.
+* `screenshots.yml`: on demand only (`workflow_dispatch`): regenerates `docs/screenshots/` and commits the result.

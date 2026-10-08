@@ -30,7 +30,7 @@ pythonpath = ["host"]
 addopts = "-ra --strict-markers"
 
 [tool.mypy]
-files = ["host", "tests"]
+files = ["host", "scripts", "tests"]
 mypy_path = "host"
 python_version = "3.12"
 check_untyped_defs = true

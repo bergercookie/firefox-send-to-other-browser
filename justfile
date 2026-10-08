@@ -56,6 +56,10 @@ uninstall-host:
 run:
     {{web_ext}} run --source-dir extension
 
+# Regenerate docs/screenshots/*.png (README embeds them).
+screenshots:
+    uv run python scripts/screenshots.py
+
 # --- packaging ---------------------------------------------------------------
 
 # The version declared in extension/manifest.json.

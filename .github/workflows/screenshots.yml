@@ -1,0 +1,38 @@
+name: Screenshots
+
+# Regenerates docs/screenshots/*.png (embedded in README.md) and commits them
+# back to the branch it was dispatched on. On demand only: the images only need
+# refreshing when the popup's looks change.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: extractions/setup-just@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - uses: browser-actions/setup-firefox@v1
+      - run: just screenshots
+      - name: Commit updated screenshots
+        run: |
+          if git diff --quiet -- docs/screenshots; then
+            echo "Screenshots are already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots
+          git commit -m "Update screenshots"
+          git push
