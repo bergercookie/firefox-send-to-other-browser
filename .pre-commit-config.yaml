@@ -1,0 +1,32 @@
+# Every lint check lives here; `just lint` is `uv run pre-commit run --all-files`.
+#
+# The hooks are `repo: local` + `language: system` on purpose: each entry is an
+# `uv run ...` (or `npx ...`) invocation, so pyproject.toml stays the single source
+# of truth for tool versions and pre-commit never fetches a second copy of ruff/mypy.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types: [python]
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        pass_filenames: false
+
+      - id: web-ext-lint
+        name: web-ext lint
+        entry: npx --yes web-ext@8 lint --source-dir extension --warnings-as-errors
+        language: system
+        files: ^extension/
+        pass_filenames: false

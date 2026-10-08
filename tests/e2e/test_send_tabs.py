@@ -6,6 +6,7 @@ between the extension's popup and that exec call is the production code path.
 
 Requires Firefox (override with $FIREFOX_BIN) and selenium (`just setup`).
 """
+
 import json
 import os
 import shutil
@@ -15,7 +16,9 @@ import sys
 import threading
 import time
 import uuid
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -36,19 +39,19 @@ printf '%s\\n' "$@" >> "$E2E_LOG_DIR/$(basename "$0").log"
 
 
 class _Page(BaseHTTPRequestHandler):
-    def do_GET(self):
+    def do_GET(self) -> None:
         body = f"<title>{self.path}</title><h1>{self.path}</h1>".encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, *args):
+    def log_message(self, *args: object) -> None:
         pass
 
 
 @pytest.fixture(scope="session")
-def web_server():
+def web_server() -> Iterator[str]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Page)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_port}"
@@ -56,7 +59,7 @@ def web_server():
 
 
 @pytest.fixture
-def env(tmp_path, monkeypatch):
+def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Fake browsers + a throwaway HOME holding the native messaging manifest."""
     bin_dir, log_dir, home = tmp_path / "bin", tmp_path / "logs", tmp_path / "home"
     for d in (bin_dir, log_dir, home):
@@ -66,7 +69,12 @@ def env(tmp_path, monkeypatch):
         exe.write_text(FAKE_BROWSER)
         exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
     subprocess.run(
-        [sys.executable, str(ROOT / "host" / "install.py"), "--dest", str(home / ".mozilla" / "native-messaging-hosts")],
+        [
+            sys.executable,
+            str(ROOT / "host" / "install.py"),
+            "--dest",
+            str(home / ".mozilla" / "native-messaging-hosts"),
+        ],
         check=True,
         capture_output=True,
     )
@@ -77,21 +85,25 @@ def env(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def firefox(env):
+def firefox(env: Path) -> Iterator[webdriver.Firefox]:
     options = Options()
     options.add_argument("-headless")
     if os.environ.get("FIREFOX_BIN"):
         options.binary_location = os.environ["FIREFOX_BIN"]
     # Pin the extension's moz-extension:// host so the test can open its popup.
-    options.set_preference("extensions.webextensions.uuids", json.dumps({EXTENSION_ID: EXTENSION_UUID}))
+    options.set_preference(
+        "extensions.webextensions.uuids", json.dumps({EXTENSION_ID: EXTENSION_UUID})
+    )
     # --allow-system-access: chrome-context access, see open_extension_page
-    driver = webdriver.Firefox(options=options, service=Service(service_args=["--allow-system-access"]))
+    driver = webdriver.Firefox(
+        options=options, service=Service(service_args=["--allow-system-access"])
+    )
     driver.install_addon(str(ROOT / "extension"), temporary=True)
     yield driver
     driver.quit()
 
 
-def open_extension_page(driver, url):
+def open_extension_page(driver: webdriver.Firefox, url: str) -> None:
     """WebDriver refuses to navigate to moz-extension:// URLs, so open the tab from chrome context."""
     before = set(driver.window_handles)
     with driver.context(driver.CONTEXT_CHROME):
@@ -103,14 +115,15 @@ def open_extension_page(driver, url):
     handle = WebDriverWait(driver, 10).until(lambda d: (set(d.window_handles) - before) or False)
     driver.switch_to.window(handle.pop())
     WebDriverWait(driver, 10).until(
-        lambda d: d.current_url.startswith("moz-extension://")
-        and d.execute_script("return document.readyState") == "complete"
+        lambda d: (
+            d.current_url.startswith("moz-extension://")
+            and d.execute_script("return document.readyState") == "complete"
+        )
     )
 
 
-def open_tabs(driver, urls):
+def open_tabs(driver: webdriver.Firefox, urls: list[str]) -> list[int]:
     """Open each url in its own tab; return their Firefox tab ids."""
-    ids = []
     for url in urls:
         driver.switch_to.new_window("tab")
         driver.get(url)
@@ -124,11 +137,11 @@ def open_tabs(driver, urls):
     return [by_url[u] for u in urls]
 
 
-def open_popup(driver, tab_ids):
+def open_popup(driver: webdriver.Firefox, tab_ids: list[int]) -> None:
     open_extension_page(driver, f"{POPUP_URL}?tabIds={','.join(map(str, tab_ids))}")
 
 
-def wait_for_log(log_dir, name, timeout=10):
+def wait_for_log(log_dir: Path, name: str, timeout: float = 10) -> list[str]:
     path = log_dir / f"{name}.log"
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -138,13 +151,17 @@ def wait_for_log(log_dir, name, timeout=10):
     raise AssertionError(f"{name} was never started")
 
 
-def status_text(driver, contains):
+def status_text(driver: webdriver.Firefox, contains: str) -> str:
     return WebDriverWait(driver, 10).until(
         lambda d: (t := d.find_element(By.ID, "status").text) and contains in t and t
     )
 
 
-def test_send_selected_tabs_to_vivaldi(firefox, env, web_server):
+def test_send_selected_tabs_to_vivaldi(
+    firefox: webdriver.Firefox,
+    env: Path,
+    web_server: str,
+) -> None:
     urls = [f"{web_server}/one", f"{web_server}/two", f"{web_server}/three"]
     tab_ids = open_tabs(firefox, urls)
     open_popup(firefox, tab_ids[:2])  # the user selected the first two tabs
@@ -154,7 +171,10 @@ def test_send_selected_tabs_to_vivaldi(firefox, env, web_server):
     )
     assert summary
     WebDriverWait(firefox, 10).until(lambda d: d.find_elements(By.CSS_SELECTOR, "#browsers button"))
-    buttons = {b.get_attribute("data-browser"): b for b in firefox.find_elements(By.CSS_SELECTOR, "#browsers button")}
+    buttons = {
+        b.get_attribute("data-browser"): b
+        for b in firefox.find_elements(By.CSS_SELECTOR, "#browsers button")
+    }
     assert {"vivaldi", "chrome"} <= set(buttons)
 
     buttons["vivaldi"].click()
@@ -164,7 +184,11 @@ def test_send_selected_tabs_to_vivaldi(firefox, env, web_server):
     assert not (env / "google-chrome.log").exists()
 
 
-def test_send_to_chrome_and_close_tabs(firefox, env, web_server):
+def test_send_to_chrome_and_close_tabs(
+    firefox: webdriver.Firefox,
+    env: Path,
+    web_server: str,
+) -> None:
     urls = [f"{web_server}/a", f"{web_server}/b"]
     tab_ids = open_tabs(firefox, urls)
     open_popup(firefox, tab_ids)
@@ -182,7 +206,11 @@ def test_send_to_chrome_and_close_tabs(firefox, env, web_server):
     assert not set(urls) & set(remaining)
 
 
-def test_non_web_tabs_are_skipped(firefox, env, web_server):
+def test_non_web_tabs_are_skipped(
+    firefox: webdriver.Firefox,
+    env: Path,
+    web_server: str,
+) -> None:
     url = f"{web_server}/web"
     tab_ids = open_tabs(firefox, [url])
     open_popup(firefox, tab_ids)
@@ -191,7 +219,7 @@ def test_non_web_tabs_are_skipped(firefox, env, web_server):
         "const done = arguments[arguments.length - 1];"
         "browser.tabs.getCurrent().then((t) => done(t.id));"
     )
-    open_popup(firefox, tab_ids + [own_id])
+    open_popup(firefox, [*tab_ids, own_id])
     WebDriverWait(firefox, 10).until(lambda d: "1 skipped" in d.find_element(By.ID, "summary").text)
     WebDriverWait(firefox, 10).until(lambda d: d.find_elements(By.CSS_SELECTOR, "#browsers button"))
     firefox.find_element(By.CSS_SELECTOR, "button[data-browser=vivaldi]").click()
@@ -199,7 +227,12 @@ def test_non_web_tabs_are_skipped(firefox, env, web_server):
     assert wait_for_log(env, "vivaldi") == [url]
 
 
-def test_missing_native_host_shows_a_helpful_error(firefox, env, web_server, tmp_path):
+def test_missing_native_host_shows_a_helpful_error(
+    firefox: webdriver.Firefox,
+    env: Path,
+    web_server: str,
+    tmp_path: Path,
+) -> None:
     shutil.rmtree(Path(os.environ["HOME"]) / ".mozilla" / "native-messaging-hosts")
     tab_ids = open_tabs(firefox, [f"{web_server}/x"])
     open_popup(firefox, tab_ids)

@@ -1,0 +1,76 @@
+# Single source of truth for the Python toolchain: dependencies, pytest, mypy and
+# ruff all read this file. `uv` owns the virtualenv, `pre-commit` owns the checks.
+
+[project]
+name = "send-to-other-browser"
+# extension/manifest.json is the authoritative version; keep this in sync.
+version = "0.1.0"
+description = "Firefox extension and native messaging host that sends selected tabs to another browser."
+readme = "README.md"
+requires-python = ">=3.12"
+# Not an installable package: the host is a plain script Firefox launches directly,
+# so there is no build system and no runtime dependencies (stdlib only).
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14",
+    "pre-commit>=4.0",
+    "pytest>=8,<9",
+    "ruff>=0.9",
+    "selenium>=4.20,<5",
+    "websocket-client>=1.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# host/ is a directory of scripts, not a package; put it on the import path so the
+# tests import `send_to_other_browser` / `install` the same way Firefox does.
+pythonpath = ["host"]
+addopts = "-ra --strict-markers"
+
+[tool.mypy]
+files = ["host", "tests"]
+mypy_path = "host"
+python_version = "3.12"
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+pretty = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "websocket"
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "B",    # bugbear
+    "C4",   # comprehensions
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # import sorting
+    "PT",   # pytest style
+    "RUF",  # ruff-specific
+    "SIM",  # simplify
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
+]
+# ruff format owns line length; E501 would only fight it over long strings/URLs.
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.lint.per-file-ignores]
+# The e2e suite mutates os.environ and spins up subprocesses on purpose.
+"tests/e2e/*" = ["SIM117"]

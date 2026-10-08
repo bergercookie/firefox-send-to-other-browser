@@ -46,6 +46,8 @@ jobs:
         with:
           python-version: "3.12"
       - if: steps.changed.outputs.build == 'true'
+        uses: astral-sh/setup-uv@v6
+      - if: steps.changed.outputs.build == 'true'
         uses: browser-actions/setup-firefox@v1
       - if: steps.changed.outputs.build == 'true'
         run: just ci

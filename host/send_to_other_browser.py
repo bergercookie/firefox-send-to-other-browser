@@ -14,20 +14,27 @@ Every response has "ok": true/false, plus "error" when false.
 Set SEND_TO_OTHER_BROWSER_PATH to a ':'-separated list of directories that are
 searched for browser executables before $PATH (used by the tests).
 """
+
 import json
 import os
 import shutil
 import struct
 import subprocess
 import sys
+from collections.abc import Callable
+from collections.abc import Mapping
+from typing import IO
+from typing import Any
 from urllib.parse import urlsplit
 
 VERSION = "0.1.0"
 MAX_URLS = 500
 MAX_MESSAGE_BYTES = 1024 * 1024  # Firefox never sends more than 4 GiB; we are stricter.
 
+Browser = dict[str, str]
+
 # id -> (display name, executable names tried in order)
-BROWSERS = {
+BROWSERS: dict[str, tuple[str, tuple[str, ...]]] = {
     "vivaldi": ("Vivaldi", ("vivaldi", "vivaldi-stable", "vivaldi.vivaldi-stable")),
     "chrome": ("Google Chrome", ("google-chrome", "google-chrome-stable")),
     "chromium": ("Chromium", ("chromium", "chromium-browser")),
@@ -52,17 +59,17 @@ FALLBACK_DIRS = (
 )
 
 
-def search_path(env=None):
-    env = os.environ if env is None else env
-    extra = [p for p in env.get("SEND_TO_OTHER_BROWSER_PATH", "").split(os.pathsep) if p]
+def search_path(env: Mapping[str, str] | None = None) -> str:
+    source: Mapping[str, str] = os.environ if env is None else env
+    extra = [p for p in source.get("SEND_TO_OTHER_BROWSER_PATH", "").split(os.pathsep) if p]
     fallback = [os.path.expanduser(d) for d in FALLBACK_DIRS]
-    return os.pathsep.join(extra + [env.get("PATH", os.defpath)] + fallback)
+    return os.pathsep.join([*extra, source.get("PATH", os.defpath), *fallback])
 
 
-def discover_browsers(path=None):
+def discover_browsers(path: str | None = None) -> list[Browser]:
     """Return [{"id", "name", "path"}] for every supported browser found."""
     path = search_path() if path is None else path
-    found = []
+    found: list[Browser] = []
     for browser_id, (name, executables) in BROWSERS.items():
         for exe in executables:
             resolved = shutil.which(exe, path=path)
@@ -72,7 +79,7 @@ def discover_browsers(path=None):
     return found
 
 
-def is_web_url(url):
+def is_web_url(url: object) -> bool:
     if not isinstance(url, str) or not url or len(url) > 32768:
         return False
     try:
@@ -82,7 +89,7 @@ def is_web_url(url):
     return parts.scheme in ("http", "https") and bool(parts.netloc)
 
 
-def _spawn(argv):
+def _spawn(argv: list[str]) -> None:
     # Detached, so the browser outlives this short-lived host. A running
     # Chromium-family browser hands the URLs to the existing instance, which
     # opens them as new tabs in its most recent window and the child exits
@@ -97,7 +104,11 @@ def _spawn(argv):
     )
 
 
-def handle_request(request, discover=discover_browsers, spawn=_spawn):
+def handle_request(
+    request: object,
+    discover: Callable[[], list[Browser]] = discover_browsers,
+    spawn: Callable[[list[str]], object] = _spawn,
+) -> dict[str, Any]:
     if not isinstance(request, dict):
         return {"ok": False, "error": "request must be a JSON object"}
     action = request.get("action")
@@ -119,9 +130,13 @@ def handle_request(request, discover=discover_browsers, spawn=_spawn):
         if not valid:
             return {"ok": False, "error": "no valid http(s) urls", "skipped": skipped}
         browsers = {b["id"]: b for b in discover()}
-        target = browsers.get(request.get("browser"))
+        browser_id = request.get("browser")
+        target = browsers.get(browser_id) if isinstance(browser_id, str) else None
         if target is None:
-            return {"ok": False, "error": f"browser {request.get('browser')!r} not found on this system"}
+            return {
+                "ok": False,
+                "error": f"browser {request.get('browser')!r} not found on this system",
+            }
         try:
             spawn([target["path"], *valid])
         except OSError as exc:
@@ -131,7 +146,7 @@ def handle_request(request, discover=discover_browsers, spawn=_spawn):
     return {"ok": False, "error": f"unknown action {action!r}"}
 
 
-def read_message(stream):
+def read_message(stream: IO[bytes]) -> Any:
     """Read one framed message; None on clean EOF."""
     header = stream.read(4)
     if len(header) < 4:
@@ -145,13 +160,13 @@ def read_message(stream):
     return json.loads(body.decode("utf-8"))
 
 
-def write_message(stream, message):
+def write_message(stream: IO[bytes], message: object) -> None:
     body = json.dumps(message).encode("utf-8")
     stream.write(struct.pack("=I", len(body)) + body)
     stream.flush()
 
 
-def serve(stdin, stdout, **kwargs):
+def serve(stdin: IO[bytes], stdout: IO[bytes], **kwargs: Any) -> int:
     """Answer requests until the browser closes the pipe."""
     while True:
         try:
@@ -164,7 +179,7 @@ def serve(stdin, stdout, **kwargs):
         write_message(stdout, handle_request(request, **kwargs))
 
 
-def main():
+def main() -> int:
     return serve(sys.stdin.buffer, sys.stdout.buffer)
 
 

@@ -52,9 +52,18 @@ Nothing is collected or transmitted; see [PRIVACY.md](PRIVACY.md).
 
 Everything goes through the [`justfile`](justfile) (`just` lists recipes); CI calls the same recipes.
 
+Python tooling is managed by [uv](https://docs.astral.sh/uv/) from [`pyproject.toml`](pyproject.toml), which
+is the single source of truth for the dependencies (dev group) and the pytest, mypy and ruff configuration.
+`just setup` creates `.venv` and installs it; every command below runs inside that venv via `uv run`.
+
+All lint checks live in [`.pre-commit-config.yaml`](.pre-commit-config.yaml) — `ruff check`, `ruff format`,
+`mypy` and `web-ext lint` — and `just lint` runs all of them over the whole tree. Run
+`uv run pre-commit install` once if you also want them on every commit.
+
 | Recipe | What |
 | --- | --- |
-| `just lint` | web-ext lint + byte-compile host |
+| `just setup` | `uv sync`: create `.venv` and install the dev dependencies |
+| `just lint` | every lint check via pre-commit (ruff check, ruff format, mypy, web-ext lint) |
 | `just test-unit` | python (host) and node (extension) unit tests |
 | `just test-e2e` | headless Firefox + real extension + real host, fake `vivaldi`/`google-chrome` executables (`FIREFOX_BIN` selects Firefox) |
 | `just ci` | all of the above |

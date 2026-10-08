@@ -1,5 +1,8 @@
 # The single source of truth for developing, testing and packaging this repo.
 # CI only ever calls the recipes below. Run `just` to list them.
+#
+# `uv` owns the virtualenv and every Python dependency (declared in pyproject.toml);
+# `pre-commit` owns every lint check. Recipes below are thin wrappers over both.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
@@ -11,30 +14,28 @@ default:
 
 # --- setup -------------------------------------------------------------------
 
-# Create the virtualenv used by the e2e tests (selenium, pytest).
+# Create the virtualenv and install the dev dependencies from pyproject.toml.
 setup:
-    python3 -m venv {{venv}}
-    {{venv}}/bin/pip install --quiet -r tests/e2e/requirements.txt
+    uv sync
 
 # --- checks ------------------------------------------------------------------
 
-# Lint the extension with web-ext and byte-compile the host.
+# Every lint check, via pre-commit: ruff check, ruff format, mypy, web-ext lint.
 lint:
-    {{web_ext}} lint --source-dir extension --warnings-as-errors
-    python3 -m py_compile host/send_to_other_browser.py host/install.py
+    uv run pre-commit run --all-files
 
 # Unit tests for the native host (python) and the extension logic (node).
 test-unit: test-host test-extension
 
 test-host:
-    python3 -m unittest discover -s tests/host -v
+    uv run pytest tests/host -v
 
 test-extension:
     node --test tests/extension/*.test.mjs
 
 # End-to-end test: real headless Firefox, real extension, real host, fake target browsers.
-test-e2e: setup
-    {{venv}}/bin/python -m pytest tests/e2e -v
+test-e2e:
+    uv run pytest tests/e2e -v
 
 # Everything.
 test: test-unit test-e2e
@@ -95,4 +96,4 @@ package override="":
     ls -l dist
 
 clean:
-    rm -rf build dist {{venv}}
+    rm -rf build dist {{venv}} .ruff_cache .mypy_cache .pytest_cache
