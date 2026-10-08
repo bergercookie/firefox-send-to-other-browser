@@ -1,0 +1,7 @@
+body { min-width: 260px; margin: 12px; font: 14px system-ui, sans-serif; }
+button { display: block; width: 100%; margin: 6px 0; padding: 8px; font: inherit; cursor: pointer; }
+button:disabled { cursor: default; }
+label { display: block; margin-top: 8px; font-size: 13px; }
+#status { min-height: 1.2em; font-size: 13px; }
+#status.error { color: #c00; }
+#status.ok { color: #1a7f37; }

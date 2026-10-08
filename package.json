@@ -1,0 +1,6 @@
+{
+  "name": "send-to-other-browser",
+  "private": true,
+  "type": "module",
+  "description": "Dev metadata only; the version lives in extension/manifest.json."
+}

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Send to Other Browser",
+  "version": "0.1.0",
+  "description": "Send the URLs of your selected tabs to another browser (Vivaldi, Chrome, Chromium, ...) running on this machine.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "send-to-other-browser@bergercookie",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": { "required": ["none"] }
+    }
+  },
+  "permissions": ["tabs", "nativeMessaging", "menus"],
+  "background": { "scripts": ["background.js"], "type": "module" },
+  "action": {
+    "default_title": "Send selected tabs to another browser",
+    "default_popup": "popup/popup.html",
+    "default_icon": "icons/icon.svg"
+  },
+  "icons": { "48": "icons/icon.svg", "96": "icons/icon.svg" }
+}

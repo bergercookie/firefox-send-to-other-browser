@@ -1,0 +1,62 @@
+name: Nightly
+
+# Publishes a rolling "nightly" pre-release whenever main/master has commits the
+# last nightly does not contain. The schedule is a safety net for missed pushes.
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    # Scheduled runs use the default branch automatically.
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Has anything changed since the last nightly?
+        id: changed
+        run: |
+          last=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/nightly" --jq .object.sha 2>/dev/null || true)
+          # An annotated tag would need dereferencing; we only ever create lightweight ones.
+          if [ "$last" = "$GITHUB_SHA" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "Nightly already built from $GITHUB_SHA"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changed.outputs.build == 'true'
+        uses: extractions/setup-just@v2
+      - if: steps.changed.outputs.build == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - if: steps.changed.outputs.build == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - if: steps.changed.outputs.build == 'true'
+        uses: browser-actions/setup-firefox@v1
+      - if: steps.changed.outputs.build == 'true'
+        run: just ci
+      - name: Package
+        if: steps.changed.outputs.build == 'true'
+        # Firefox versions allow 4 numeric parts: <manifest version>.<run number> sorts after the release.
+        run: just package "$(just version).${{ github.run_number }}"
+      - name: Replace the nightly release
+        if: steps.changed.outputs.build == 'true'
+        run: |
+          gh release delete nightly --cleanup-tag --yes 2>/dev/null || true
+          gh release create nightly dist/* --prerelease --target "$GITHUB_SHA" \
+            --title "Nightly ($(date -u +%F), ${GITHUB_SHA::7})" \
+            --notes "Automated build of ${GITHUB_SHA}. Unsigned; for testing only."
